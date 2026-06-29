@@ -1,0 +1,71 @@
+from __future__ import annotations
+
+from typing import Any
+
+import pytest
+
+fastapi = pytest.importorskip("fastapi")
+testclient = pytest.importorskip("fastapi.testclient")
+WebSocket = fastapi.WebSocket
+
+from replayrail import ReplayRail, ReplayRailConfig  # noqa: E402
+from replayrail.integrations.fastapi import ReplayRailWebSocket  # noqa: E402
+from replayrail.stores.memory import MemoryEventStore  # noqa: E402
+
+
+def create_app() -> Any:
+    app = fastapi.FastAPI()
+    rail = ReplayRail(
+        MemoryEventStore(),
+        config=ReplayRailConfig(websocket_read_block_ms=100, websocket_batch_size=10),
+    )
+    websocket_adapter = ReplayRailWebSocket(rail)
+
+    @app.post("/events/{channel:path}")
+    async def publish_event(channel: str, body: dict[str, Any]) -> dict[str, str]:
+        event = await rail.publish(
+            channel=channel,
+            event_type=str(body["type"]),
+            payload=dict(body.get("payload", {})),
+        )
+        return {"id": event.id}
+
+    @app.websocket("/ws/{channel:path}")
+    async def websocket_endpoint(websocket: WebSocket, channel: str) -> None:
+        await websocket_adapter.subscribe(websocket, channel=channel)
+
+    return app
+
+
+def test_websocket_connects() -> None:
+    client = testclient.TestClient(create_app())
+
+    with client.websocket_connect("/ws/orders"):
+        pass
+
+
+def test_published_event_is_delivered() -> None:
+    client = testclient.TestClient(create_app())
+
+    with client.websocket_connect("/ws/orders") as websocket:
+        client.post(
+            "/events/orders",
+            json={"type": "order.created", "payload": {"order_id": "ord_123"}},
+        )
+        event = websocket.receive_json()
+
+    assert event["type"] == "order.created"
+    assert event["payload"] == {"order_id": "ord_123"}
+
+
+def test_client_with_last_event_id_receives_replayed_events() -> None:
+    client = testclient.TestClient(create_app())
+    client.post(
+        "/events/orders",
+        json={"type": "order.created", "payload": {"order_id": "ord_123"}},
+    )
+
+    with client.websocket_connect("/ws/orders?last_event_id=0-0") as websocket:
+        event = websocket.receive_json()
+
+    assert event["type"] == "order.created"

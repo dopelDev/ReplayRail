@@ -1,0 +1,61 @@
+[project]
+name = "replayrail"
+version = "0.1.0"
+description = "Durable, replayable and auditable realtime events for Python WebSockets, powered by Redis Streams."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+  { name = "ReplayRail contributors" }
+]
+keywords = [
+  "redis",
+  "redis-streams",
+  "websockets",
+  "fastapi",
+  "realtime",
+  "events",
+  "replay",
+  "audit-log"
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Framework :: FastAPI",
+  "Topic :: Software Development :: Libraries :: Python Modules"
+]
+dependencies = []
+
+[project.optional-dependencies]
+redis = ["redis>=5"]
+fastapi = ["fastapi>=0.100", "starlette>=0.27"]
+dev = [
+  "pytest",
+  "pytest-asyncio",
+  "ruff",
+  "mypy",
+  "httpx",
+  "uvicorn"
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/replayrail"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
