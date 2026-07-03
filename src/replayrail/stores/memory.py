@@ -3,8 +3,14 @@ from __future__ import annotations
 import asyncio
 import time
 
-from replayrail.errors import InvalidCursorError, StoreError
-from replayrail.events import NewEvent, ReplayEvent
+from replayrail.errors import ReplayWindowExpiredError, StoreError
+from replayrail.events import (
+    NewEvent,
+    ReplayEvent,
+    stream_id_gt,
+    stream_id_lt,
+    validate_stream_cursor,
+)
 
 
 class MemoryEventStore:
@@ -50,6 +56,8 @@ class MemoryEventStore:
         limit: int,
     ) -> list[ReplayEvent]:
         self._ensure_open()
+        if after is not None:
+            validate_stream_cursor(after, allow_live=True)
         return self._events_after(channel, after=after, limit=limit)
 
     async def read(
@@ -61,6 +69,7 @@ class MemoryEventStore:
         limit: int,
     ) -> list[ReplayEvent]:
         self._ensure_open()
+        validate_stream_cursor(after, allow_live=True)
         condition = self._condition_for(channel)
         timeout = None if block_ms is None else block_ms / 1000
         async with condition:
@@ -121,16 +130,6 @@ class MemoryEventStore:
             return list(stream[:limit])
         if after == "$":
             return []
-        return [event for event in stream if _stream_id_gt(event.id, after)][:limit]
-
-
-def _stream_id_gt(left: str, right: str) -> bool:
-    return _parse_stream_id(left) > _parse_stream_id(right)
-
-
-def _parse_stream_id(value: str) -> tuple[int, int]:
-    try:
-        milliseconds, sequence = value.split("-", maxsplit=1)
-        return int(milliseconds), int(sequence)
-    except (AttributeError, TypeError, ValueError) as exc:
-        raise InvalidCursorError(f"invalid stream cursor: {value!r}") from exc
+        if stream and after != "0-0" and stream_id_lt(after, stream[0].id):
+            raise ReplayWindowExpiredError("requested replay cursor is older than retained history")
+        return [event for event in stream if stream_id_gt(event.id, after)][:limit]

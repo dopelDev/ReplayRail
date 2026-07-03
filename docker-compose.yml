@@ -3,3 +3,21 @@ services:
     image: redis:7
     ports:
       - "6379:6379"
+
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
+    depends_on:
+      - redis
+    environment:
+      REDIS_URL: redis://redis:6379
+    command: >
+      sh -c "pytest -p no:cacheprovider &&
+             ruff check . &&
+             ruff format --check . &&
+             mypy src/replayrail &&
+             python -m build &&
+             twine check dist/*"

@@ -1,6 +1,6 @@
 [project]
 name = "replayrail"
-version = "0.1.0"
+version = "0.1.2"
 description = "Durable, replayable and auditable realtime events for Python WebSockets, powered by Redis Streams."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -22,6 +22,7 @@ classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Developers",
   "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
@@ -30,15 +31,22 @@ classifiers = [
 ]
 dependencies = []
 
+[project.urls]
+Homepage = "https://github.com/dopelDev/ReplayRail"
+Repository = "https://github.com/dopelDev/ReplayRail"
+Issues = "https://github.com/dopelDev/ReplayRail/issues"
+
 [project.optional-dependencies]
 redis = ["redis>=5"]
 fastapi = ["fastapi>=0.100", "starlette>=0.27"]
 dev = [
+  "build",
   "pytest",
   "pytest-asyncio",
   "ruff",
   "mypy",
   "httpx",
+  "twine",
   "uvicorn"
 ]
 

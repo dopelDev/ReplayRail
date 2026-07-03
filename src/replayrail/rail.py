@@ -4,7 +4,13 @@ from typing import Any, Mapping
 
 from .config import ReplayRailConfig
 from .errors import InvalidCursorError
-from .events import NewEvent, ReplayEvent, validate_channel, validate_event_type
+from .events import (
+    NewEvent,
+    ReplayEvent,
+    validate_channel,
+    validate_event_type,
+    validate_stream_cursor,
+)
 from .store import EventStore
 
 
@@ -51,6 +57,8 @@ class ReplayRail:
         limit: int | None = None,
     ) -> list[ReplayEvent]:
         validate_channel(channel)
+        if after is not None:
+            validate_stream_cursor(after, allow_live=True)
         resolved_limit = self._resolve_limit(limit)
         return await self.store.replay(channel, after=after, limit=resolved_limit)
 
@@ -63,8 +71,7 @@ class ReplayRail:
         limit: int | None = None,
     ) -> list[ReplayEvent]:
         validate_channel(channel)
-        if not after:
-            raise InvalidCursorError("after cursor must be a non-empty string")
+        validate_stream_cursor(after, allow_live=True)
         resolved_limit = self._resolve_limit(limit)
         resolved_block_ms = self.config.websocket_read_block_ms if block_ms is None else block_ms
         return await self.store.read(

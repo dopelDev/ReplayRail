@@ -1,0 +1,18 @@
+ARG PYTHON_VERSION=3.11
+FROM python:${PYTHON_VERSION}-slim
+
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /workspace
+
+COPY pyproject.toml README.md ./
+COPY src ./src
+
+RUN python -m pip install --upgrade pip \
+    && python -m pip install -e ".[redis,fastapi,dev]"
+
+COPY . .
+
+CMD ["sh", "-c", "pytest -p no:cacheprovider && ruff check . && ruff format --check . && mypy src/replayrail && python -m build && twine check dist/*"]

@@ -1,7 +1,7 @@
 import pytest
 
 from replayrail import ReplayRail, ReplayRailConfig
-from replayrail.errors import InvalidChannelError
+from replayrail.errors import InvalidChannelError, InvalidCursorError
 from replayrail.stores.memory import MemoryEventStore
 
 
@@ -40,3 +40,19 @@ async def test_actor_can_be_none() -> None:
     event = await rail.publish(channel="orders", event_type="order.created", payload={})
 
     assert event.actor is None
+
+
+@pytest.mark.asyncio
+async def test_replay_invalid_cursor_raises() -> None:
+    rail = ReplayRail(MemoryEventStore())
+
+    with pytest.raises(InvalidCursorError):
+        await rail.replay("orders", after="not-a-cursor")
+
+
+@pytest.mark.asyncio
+async def test_read_invalid_cursor_raises() -> None:
+    rail = ReplayRail(MemoryEventStore())
+
+    with pytest.raises(InvalidCursorError):
+        await rail.read("orders", after="not-a-cursor", block_ms=0)

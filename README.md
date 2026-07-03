@@ -96,6 +96,20 @@ If `last_event_id` is missing, `ReplayRailConfig.default_start_position` control
 - `latest`: send only new events.
 - `earliest`: replay from the beginning of the channel.
 
+Replay cursors use Redis Stream ID format:
+
+```txt
+<milliseconds>-<sequence>
+```
+
+The live-only cursor `$` is accepted for blocking reads and WebSocket startup. If a replay cursor is invalid, ReplayRail raises `InvalidCursorError`. If a store can determine that a valid cursor is older than retained history, ReplayRail raises `ReplayWindowExpiredError`.
+
+## Retention
+
+`ReplayRailConfig.max_stream_length` is passed to stores as the stream `maxlen` retention setting. The Redis backend forwards it to `XADD`; the memory backend applies the same observable trimming behavior for tests and local development.
+
+Clients should treat `last_event_id` as a recovery cursor within the configured retention window, not as a permanent archive pointer. If the cursor falls outside retained history and the backend can identify that condition, replay raises `ReplayWindowExpiredError`.
+
 ## Event Envelope
 
 ```json
@@ -190,6 +204,25 @@ You can use `redis.asyncio` directly. ReplayRail adds reusable application seman
 - JSON serialization.
 - Minimal FastAPI example.
 
+## Development Verification
+
+The reproducible local verification path uses Docker:
+
+```bash
+docker compose run --rm test
+docker compose down
+```
+
+The test service installs `.[redis,fastapi,dev]`, runs Redis through Compose, sets `REDIS_URL=redis://redis:6379`, and executes:
+
+```bash
+pytest -p no:cacheprovider
+ruff check .
+ruff format --check .
+mypy src/replayrail
+python -m build
+```
+
 ## Intentionally Not Included In v0.1
 
 - advanced client ACK protocol;
@@ -206,4 +239,8 @@ You can use `redis.asyncio` directly. ReplayRail adds reusable application seman
 
 ## Known Limitation
 
-v0.1 prioritizes correctness and simplicity. The WebSocket integration uses one blocking read loop per WebSocket subscription. Future versions may add a local per-channel fanout manager so multiple WebSocket clients subscribed to the same channel share one Redis read loop per process.
+v0.1 prioritizes correctness and simplicity.
+
+- The WebSocket integration uses one blocking read loop per WebSocket subscription. Future versions may add a local per-channel fanout manager so multiple WebSocket clients subscribed to the same channel share one Redis read loop per process.
+- Replay recovery is bounded by stream retention. ReplayRail can signal expired windows only when the backend can determine that a cursor is older than retained history.
+- `actor` and `metadata` are preserved and delivered as audit context, but ReplayRail does not provide a compliance archive or authorization framework in v0.1.

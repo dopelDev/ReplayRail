@@ -1023,7 +1023,16 @@ Follow this exact order:
 
 ### Step 12: Quality pass
 
-Run:
+Prefer running quality checks inside Docker so the test environment is reproducible.
+The host environment is not authoritative for release confidence.
+
+Required Docker test zone:
+
+- A Python test container with the project installed using `.[redis,fastapi,dev]`.
+- A Redis service reachable from the test container through `REDIS_URL`.
+- A single command that runs the full local quality gate.
+
+Run inside the Docker test zone:
 
 ```bash
 ruff check .
@@ -1066,31 +1075,125 @@ Future versions may add a local per-channel fanout manager so multiple WebSocket
 
 ---
 
-## 23. Future roadmap after v0.1
+## 23. Release milestone plan
 
-### v0.2
+Use patch releases to close the gap between the current implementation and the README contract.
+`v0.2.0` is the first version that should be treated as publishable.
+
+### v0.1.1 - README contract verification
+
+Goal:
+
+- Turn the README into an executable contract.
+- Identify exactly which README promises are already true and which need implementation hardening.
+- Establish Docker as the reproducible test zone for README contract checks.
+
+Required work:
+
+- Add a Docker-based test runner that installs the project with `.[redis,fastapi,dev]`.
+- Wire the Docker test runner to Redis through `REDIS_URL`.
+- Add contract tests for the README quickstart flow:
+  - publish an event;
+  - persist or store it through the configured backend;
+  - replay events after a cursor;
+  - preserve the event envelope fields;
+  - preserve `actor`, `metadata`, and `created_at`;
+  - deliver a replayed event through WebSocket using `last_event_id`.
+- Add WebSocket tests for `default_start_position`:
+  - `latest` sends only new events;
+  - `earliest` replays existing events from the beginning.
+- Keep the README unchanged unless a statement is clearly false.
+- Do not add advanced features in this release.
+
+Exit criteria:
+
+- README contract tests exist.
+- README contract tests can be run from Docker.
+- Existing tests still pass.
+- Known mismatches are documented as follow-up work for `v0.1.2`.
+
+### v0.1.2 - Functional hardening
+
+Goal:
+
+- Make the implemented behavior strong enough to support the public README claims without overstating production readiness.
+
+Required work:
+
+- Harden cursor validation consistently across `ReplayRail`, `MemoryEventStore`, and `RedisStreamStore`.
+- Align memory and Redis replay behavior:
+  - exclusive replay after a cursor;
+  - `after=None` starts from the beginning;
+  - `after="$"` means live-only reads;
+  - invalid cursor values raise library-specific errors.
+- Improve retention behavior:
+  - keep `maxlen` semantics covered by tests;
+  - detect or explicitly document trimmed-history behavior;
+  - use `ReplayWindowExpiredError` only if the implementation can identify that condition reliably.
+- Strengthen audit metadata behavior:
+  - verify `actor`, `metadata`, correlation IDs, source values, and timestamps survive publish, replay, Redis decode, and WebSocket delivery.
+- Improve example app behavior where needed to match README examples.
+- Update README limitations so it is honest about what is implemented and what is intentionally deferred.
+
+Exit criteria:
+
+- Contract, unit, Redis-gated, and FastAPI-gated tests cover the README behavior.
+- README claims are either implemented or explicitly listed as limitations.
+- The project is still scoped as `0.1.x`, not yet advertised as a publishable release.
+
+### v0.2.0 - Publishable release
+
+Goal:
+
+- Produce the first version suitable to publish and point users at.
+
+Required work:
+
+- Add CI for Python 3.11 and 3.12.
+- CI must use the same Docker test-zone assumptions as local verification where practical.
+- Ensure these commands pass in a clean environment:
+  - `pytest`
+  - `ruff check .`
+  - `ruff format --check .`
+  - `mypy src/replayrail`
+  - `python -m build`
+- Verify install flows:
+  - `pip install -e ".[redis,fastapi,dev]"`
+  - `import replayrail`
+  - `from replayrail import ReplayRail, ReplayRailConfig`
+- Verify Redis integration with `REDIS_URL`.
+- Verify the FastAPI example can start and deliver events.
+- Review package metadata:
+  - name;
+  - version;
+  - description;
+  - license;
+  - Python versions;
+  - optional extras;
+  - typed package marker.
+- Add release notes or changelog entry for `v0.2.0`.
+- Make README match the proven behavior exactly.
+- Decide whether publishing is manual or automated, and document the release procedure.
+
+Exit criteria:
+
+- `v0.2.0` can be built from a clean checkout.
+- CI validates tests, lint, formatting, typing, and build.
+- README examples are executable or covered by equivalent tests.
+- Known limitations are visible and not hidden behind marketing language.
+
+### Deferred until after v0.2.0
 
 - Per-channel fanout worker.
 - Authorization hook.
-- Better WebSocket lifecycle handling.
 - Control messages such as `replay_complete`.
-- More robust reconnect behavior.
-
-### v0.3
-
-- Client ACK mode.
+- Advanced client ACK mode.
+- Redis consumer group helpers.
 - Delivery tracking.
 - Retry policy.
 - Dead-letter stream.
-
-### v0.4
-
-- Consumer group helpers.
-- Worker processing helpers.
-- Metrics hooks.
-
-### Later
-
+- Metrics hooks and exporters.
+- Dashboards.
 - NATS JetStream backend.
 - PostgreSQL event table backend.
 - Kafka/Redpanda backend.
@@ -1100,7 +1203,13 @@ Future versions may add a local per-channel fanout manager so multiple WebSocket
 
 ## 24. Final instruction to the coding agent
 
-Implement ReplayRail v0.1.0 according to this action plan.
+Continue ReplayRail development according to the release milestone plan.
+
+Current priority order:
+
+1. `v0.1.1`: make the README contract executable through tests;
+2. `v0.1.2`: harden the implementation until README behavior is reliable;
+3. `v0.2.0`: make the project publishable with CI, packaging, release notes, and verified examples.
 
 Prioritize:
 
@@ -1115,4 +1224,3 @@ Do not overbuild. The first version should prove this core loop:
 ```txt
 publish event -> persist to Redis Stream -> deliver over WebSocket -> reconnect with cursor -> replay missed events
 ```
-

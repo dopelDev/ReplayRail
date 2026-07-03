@@ -5,12 +5,13 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Mapping
 
-from .errors import InvalidChannelError, InvalidEventTypeError
+from .errors import InvalidChannelError, InvalidCursorError, InvalidEventTypeError
 
 JsonMapping = Mapping[str, Any]
 
 _CHANNEL_RE = re.compile(r"^[A-Za-z0-9._\-:/]+$")
 _EVENT_TYPE_RE = re.compile(r"^[A-Za-z0-9._\-:]+$")
+_STREAM_ID_RE = re.compile(r"^\d+-\d+$")
 
 
 @dataclass(slots=True, frozen=True)
@@ -50,6 +51,29 @@ def validate_event_type(event_type: str) -> None:
         raise InvalidEventTypeError(
             "event_type may only contain letters, numbers, '.', '_', '-', and ':'"
         )
+
+
+def parse_stream_id(value: str) -> tuple[int, int]:
+    if not isinstance(value, str) or not value:
+        raise InvalidCursorError("stream cursor must be a non-empty string")
+    if _STREAM_ID_RE.fullmatch(value) is None:
+        raise InvalidCursorError("stream cursor must use '<milliseconds>-<sequence>' format")
+    milliseconds, sequence = value.split("-", maxsplit=1)
+    return int(milliseconds), int(sequence)
+
+
+def validate_stream_cursor(value: str, *, allow_live: bool = False) -> None:
+    if allow_live and value == "$":
+        return
+    parse_stream_id(value)
+
+
+def stream_id_gt(left: str, right: str) -> bool:
+    return parse_stream_id(left) > parse_stream_id(right)
+
+
+def stream_id_lt(left: str, right: str) -> bool:
+    return parse_stream_id(left) < parse_stream_id(right)
 
 
 def utc_now() -> datetime:

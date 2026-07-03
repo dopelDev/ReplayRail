@@ -1,9 +1,11 @@
 import asyncio
 import os
+from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
 
+from replayrail.errors import InvalidCursorError, ReplayWindowExpiredError
 from replayrail.events import NewEvent
 from replayrail.stores.redis import RedisStreamStore
 
@@ -76,3 +78,68 @@ async def test_maxlen_is_passed_to_redis(redis_store: RedisStreamStore) -> None:
     events = await redis_store.replay("orders", after=None, limit=10)
 
     assert len(events) == 2
+
+
+@pytest.mark.asyncio
+async def test_replay_after_trimmed_cursor_raises(redis_store: RedisStreamStore) -> None:
+    first = await redis_store.publish(
+        NewEvent(channel="orders", type="one", payload={}),
+        maxlen=2,
+        approximate=False,
+    )
+    await redis_store.publish(
+        NewEvent(channel="orders", type="two", payload={}),
+        maxlen=2,
+        approximate=False,
+    )
+    await redis_store.publish(
+        NewEvent(channel="orders", type="three", payload={}),
+        maxlen=2,
+        approximate=False,
+    )
+
+    with pytest.raises(ReplayWindowExpiredError):
+        await redis_store.replay("orders", after=first.id, limit=10)
+
+
+@pytest.mark.asyncio
+async def test_replay_after_live_cursor_returns_empty(redis_store: RedisStreamStore) -> None:
+    await redis_store.publish(NewEvent(channel="orders", type="one", payload={}))
+
+    events = await redis_store.replay("orders", after="$", limit=10)
+
+    assert events == []
+
+
+@pytest.mark.asyncio
+async def test_invalid_replay_cursor_raises(redis_store: RedisStreamStore) -> None:
+    with pytest.raises(InvalidCursorError):
+        await redis_store.replay("orders", after="not-a-cursor", limit=10)
+
+
+@pytest.mark.asyncio
+async def test_invalid_read_cursor_raises(redis_store: RedisStreamStore) -> None:
+    with pytest.raises(InvalidCursorError):
+        await redis_store.read("orders", after="not-a-cursor", block_ms=0, limit=10)
+
+
+@pytest.mark.asyncio
+async def test_actor_metadata_and_created_at_are_preserved(
+    redis_store: RedisStreamStore,
+) -> None:
+    created_at = datetime(2026, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
+
+    event = await redis_store.publish(
+        NewEvent(
+            channel="orders",
+            type="order.created",
+            payload={"order_id": "ord_123"},
+            actor={"type": "waiter", "id": "usr_123"},
+            metadata={"correlation_id": "req_abc123", "source": "test"},
+            created_at=created_at,
+        )
+    )
+
+    assert event.actor == {"type": "waiter", "id": "usr_123"}
+    assert event.metadata == {"correlation_id": "req_abc123", "source": "test"}
+    assert event.created_at == created_at
