@@ -3,10 +3,16 @@ from __future__ import annotations
 import asyncio
 import time
 
-from replayrail.errors import ReplayWindowExpiredError, StoreError
+from replayrail.errors import (
+    DuplicateEventConflictError,
+    DuplicateEventError,
+    ReplayWindowExpiredError,
+    StoreError,
+)
 from replayrail.events import (
     NewEvent,
     ReplayEvent,
+    event_fingerprint,
     stream_id_gt,
     stream_id_lt,
     validate_stream_cursor,
@@ -14,9 +20,20 @@ from replayrail.events import (
 
 
 class MemoryEventStore:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        idempotency: bool = False,
+        duplicate_policy: str = "return_existing",
+    ) -> None:
+        if duplicate_policy not in {"return_existing", "raise"}:
+            raise ValueError("duplicate_policy must be 'return_existing' or 'raise'")
         self._streams: dict[str, list[ReplayEvent]] = {}
         self._conditions: dict[str, asyncio.Condition] = {}
+        self._idempotency_enabled = idempotency
+        self._duplicate_policy = duplicate_policy
+        self._idempotency: dict[str, tuple[str, str]] = {}
+        self._idempotency_lock = asyncio.Lock()
         self._last_ms = 0
         self._sequence = 0
         self._closed = False
@@ -30,17 +47,45 @@ class MemoryEventStore:
     ) -> ReplayEvent:
         del approximate
         self._ensure_open()
+        if self._idempotency_enabled:
+            return await self._publish_idempotent(event, maxlen=maxlen)
+        return await self._append_event(event, maxlen=maxlen)
+
+    async def _publish_idempotent(
+        self,
+        event: NewEvent,
+        *,
+        maxlen: int | None,
+    ) -> ReplayEvent:
+        fingerprint = event_fingerprint(event)
+        async with self._idempotency_lock:
+            existing = self._idempotency.get(event.event_id)
+            if existing is not None:
+                existing_stream_id, existing_fingerprint = existing
+                if existing_fingerprint != fingerprint:
+                    raise DuplicateEventConflictError(
+                        "event_id was already used for different event content",
+                        event_id=event.event_id,
+                    )
+                if self._duplicate_policy == "raise":
+                    raise DuplicateEventError(
+                        "event_id has already been published",
+                        event_id=event.event_id,
+                    )
+                return self._replay_event_from_new(event, stream_id=existing_stream_id)
+            replay_event = await self._append_event(event, maxlen=maxlen)
+            self._idempotency[event.event_id] = (replay_event.id, fingerprint)
+            return replay_event
+
+    async def _append_event(
+        self,
+        event: NewEvent,
+        *,
+        maxlen: int | None,
+    ) -> ReplayEvent:
         condition = self._condition_for(event.channel)
         async with condition:
-            replay_event = ReplayEvent(
-                id=self._next_id(),
-                channel=event.channel,
-                type=event.type,
-                payload=dict(event.payload),
-                actor=dict(event.actor) if event.actor is not None else None,
-                metadata=dict(event.metadata),
-                created_at=event.created_at,
-            )
+            replay_event = self._replay_event_from_new(event, stream_id=self._next_id())
             stream = self._streams.setdefault(event.channel, [])
             stream.append(replay_event)
             if maxlen is not None and len(stream) > maxlen:
@@ -97,6 +142,22 @@ class MemoryEventStore:
         for condition in self._conditions.values():
             async with condition:
                 condition.notify_all()
+
+    async def healthcheck(self) -> bool:
+        self._ensure_open()
+        return True
+
+    def _replay_event_from_new(self, event: NewEvent, *, stream_id: str) -> ReplayEvent:
+        return ReplayEvent(
+            id=stream_id,
+            channel=event.channel,
+            type=event.type,
+            payload=dict(event.payload),
+            actor=dict(event.actor) if event.actor is not None else None,
+            metadata=dict(event.metadata),
+            created_at=event.created_at,
+            event_id=event.event_id,
+        )
 
     def _condition_for(self, channel: str) -> asyncio.Condition:
         condition = self._conditions.get(channel)

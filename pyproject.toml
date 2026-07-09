@@ -1,6 +1,6 @@
 [project]
 name = "replayrail"
-version = "0.1.2"
+version = "0.2.0"
 description = "Durable, replayable and auditable realtime events for Python WebSockets, powered by Redis Streams."
 readme = "README.md"
 requires-python = ">=3.11"

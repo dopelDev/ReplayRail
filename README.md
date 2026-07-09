@@ -89,7 +89,9 @@ ws://localhost:8000/ws/restaurant:123:orders?last_event_id=0-0
 
 ## `last_event_id`
 
-Every event has a stream cursor in `event.id`. A client should store the latest ID it has processed. When it reconnects, it can pass that cursor as `?last_event_id=<id>`, and ReplayRail replays events after that ID.
+Every event has a stream cursor in `event.id`. A client should store the latest cursor it has processed. When it reconnects, it can pass that cursor as `?last_event_id=<id>`, and ReplayRail replays events after that ID.
+
+Every event also has a logical `event_id`. Use `event_id` for tracing, deduplication, retries, external outbox integration, and client-side duplicate handling. Do not use `event_id` as the replay cursor.
 
 If `last_event_id` is missing, `ReplayRailConfig.default_start_position` controls startup:
 
@@ -115,6 +117,7 @@ Clients should treat `last_event_id` as a recovery cursor within the configured 
 ```json
 {
   "id": "1719367320123-0",
+  "event_id": "b6d8c2f1-7e35-4f86-9a67-8d9c8fdd1c55",
   "channel": "restaurant:123:orders",
   "type": "order.created",
   "payload": {"order_id": "ord_123"},
@@ -123,6 +126,28 @@ Clients should treat `last_event_id` as a recovery cursor within the configured 
   "created_at": "2026-06-29T12:00:00Z"
 }
 ```
+
+## Reliable publishing and databases
+
+ReplayRail is not a database transaction manager. If your app writes to a database and then publishes to ReplayRail, use an app-owned transactional outbox for critical workflows.
+
+ReplayRail is outbox-friendly via:
+
+- `event_id`
+- `prepare_event()`
+- `publish_event()`
+- event serialization helpers
+- optional Redis idempotency
+
+See [docs/reliable-publishing.md](docs/reliable-publishing.md).
+
+## Redis idempotency
+
+`RedisStreamStore(..., idempotency=True)` can deduplicate publishes by logical `event_id` for outbox retry flows. By default, duplicate matching events return the existing stream id. With `duplicate_policy="raise"`, duplicates raise `DuplicateEventError`.
+
+If the same `event_id` is reused for different content, ReplayRail raises `DuplicateEventConflictError`.
+
+See [docs/idempotency.md](docs/idempotency.md).
 
 ## RestaurantHUB Example
 
@@ -189,7 +214,7 @@ You can use `redis.asyncio` directly. ReplayRail adds reusable application seman
 
 `redis.asyncio` gives you Redis commands. ReplayRail gives your WebSocket application a durable realtime event contract.
 
-## Included In v0.1
+## Included In v0.2
 
 - Python package named `replayrail`.
 - Core event models and validation.
@@ -202,6 +227,12 @@ You can use `redis.asyncio` directly. ReplayRail adds reusable application seman
 - Cursor-based recovery with `last_event_id`.
 - Basic stream retention through `maxlen`.
 - JSON serialization.
+- Logical `event_id` for tracing and deduplication.
+- `ReplayRail.prepare_event(...)` and `ReplayRail.publish_event(...)`.
+- Stable event dict serialization helpers.
+- Optional Redis and memory-store idempotency by `event_id`.
+- Optional healthcheck support.
+- Reliable publishing documentation for app-owned outbox patterns.
 - Minimal FastAPI example.
 
 ## Development Verification
@@ -223,8 +254,13 @@ mypy src/replayrail
 python -m build
 ```
 
-## Intentionally Not Included In v0.1
+## Intentionally Not Included In v0.2
 
+- database sessions, commits, or rollbacks;
+- SQLAlchemy models;
+- outbox tables;
+- migrations;
+- background outbox workers;
 - advanced client ACK protocol;
 - Redis consumer groups;
 - distributed fanout optimization;
@@ -239,7 +275,7 @@ python -m build
 
 ## Known Limitation
 
-v0.1 prioritizes correctness and simplicity.
+v0.2 prioritizes correctness and simplicity.
 
 - The WebSocket integration uses one blocking read loop per WebSocket subscription. Future versions may add a local per-channel fanout manager so multiple WebSocket clients subscribed to the same channel share one Redis read loop per process.
 - Replay recovery is bounded by stream retention. ReplayRail can signal expired windows only when the backend can determine that a cursor is older than retained history.

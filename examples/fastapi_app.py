@@ -31,7 +31,14 @@ async def publish_event(channel: str, body: dict[str, Any]) -> dict[str, Any]:
         actor=body.get("actor"),
         metadata=body.get("metadata"),
     )
-    return {"event": {"id": event.id, "channel": event.channel, "type": event.type}}
+    return {
+        "event": {
+            "id": event.id,
+            "event_id": event.event_id,
+            "channel": event.channel,
+            "type": event.type,
+        }
+    }
 
 
 @app.websocket("/ws/{channel:path}")

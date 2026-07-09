@@ -1,7 +1,10 @@
 from .config import ReplayRailConfig
 from .errors import (
+    DuplicateEventConflictError,
+    DuplicateEventError,
     InvalidChannelError,
     InvalidCursorError,
+    InvalidEventIdError,
     InvalidEventTypeError,
     ReplayRailError,
     ReplayWindowExpiredError,
@@ -9,12 +12,24 @@ from .errors import (
     StoreError,
     WebSocketDeliveryError,
 )
-from .events import NewEvent, ReplayEvent
+from .events import (
+    NewEvent,
+    ReplayEvent,
+    generate_event_id,
+    new_event_from_dict,
+    new_event_to_dict,
+    replay_event_from_dict,
+    replay_event_to_dict,
+    validate_event_id,
+)
 from .rail import ReplayRail
 
 __all__ = [
+    "DuplicateEventConflictError",
+    "DuplicateEventError",
     "InvalidChannelError",
     "InvalidCursorError",
+    "InvalidEventIdError",
     "InvalidEventTypeError",
     "NewEvent",
     "ReplayEvent",
@@ -25,4 +40,10 @@ __all__ = [
     "SerializationError",
     "StoreError",
     "WebSocketDeliveryError",
+    "generate_event_id",
+    "new_event_from_dict",
+    "new_event_to_dict",
+    "replay_event_from_dict",
+    "replay_event_to_dict",
+    "validate_event_id",
 ]

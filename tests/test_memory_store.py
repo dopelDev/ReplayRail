@@ -3,7 +3,13 @@ from datetime import datetime, timezone
 
 import pytest
 
-from replayrail.errors import InvalidCursorError, ReplayWindowExpiredError
+from replayrail.errors import (
+    DuplicateEventConflictError,
+    DuplicateEventError,
+    InvalidCursorError,
+    ReplayWindowExpiredError,
+    StoreError,
+)
 from replayrail.events import NewEvent
 from replayrail.stores.memory import MemoryEventStore
 
@@ -111,6 +117,17 @@ async def test_actor_metadata_and_created_at_are_preserved() -> None:
 
 
 @pytest.mark.asyncio
+async def test_publish_preserves_event_id() -> None:
+    store = MemoryEventStore()
+
+    event = await store.publish(
+        NewEvent(channel="orders", type="order.created", payload={}, event_id="evt_123")
+    )
+
+    assert event.event_id == "evt_123"
+
+
+@pytest.mark.asyncio
 async def test_blocking_read_returns_new_event() -> None:
     store = MemoryEventStore()
 
@@ -124,3 +141,85 @@ async def test_blocking_read_returns_new_event() -> None:
 
     assert len(events) == 1
     assert events[0].type == "order.created"
+
+
+@pytest.mark.asyncio
+async def test_memory_store_default_idempotency_behavior_is_unchanged() -> None:
+    store = MemoryEventStore()
+    event = NewEvent(channel="orders", type="order.created", payload={}, event_id="evt_123")
+
+    first = await store.publish(event)
+    second = await store.publish(event)
+
+    assert first.id != second.id
+
+
+@pytest.mark.asyncio
+async def test_memory_idempotency_returns_same_stream_id_for_duplicate_event() -> None:
+    store = MemoryEventStore(idempotency=True)
+    event = NewEvent(channel="orders", type="order.created", payload={}, event_id="evt_123")
+
+    first = await store.publish(event)
+    second = await store.publish(event)
+    events = await store.replay("orders", after=None, limit=10)
+
+    assert second.id == first.id
+    assert len(events) == 1
+
+
+@pytest.mark.asyncio
+async def test_memory_idempotency_conflicts_for_different_content() -> None:
+    store = MemoryEventStore(idempotency=True)
+    created_at = datetime(2026, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
+    await store.publish(
+        NewEvent(
+            channel="orders",
+            type="order.created",
+            payload={"order_id": "one"},
+            created_at=created_at,
+            event_id="evt_123",
+        )
+    )
+
+    with pytest.raises(DuplicateEventConflictError):
+        await store.publish(
+            NewEvent(
+                channel="orders",
+                type="order.created",
+                payload={"order_id": "two"},
+                created_at=created_at,
+                event_id="evt_123",
+            )
+        )
+
+
+@pytest.mark.asyncio
+async def test_memory_duplicate_policy_raise_raises_for_duplicate_event() -> None:
+    store = MemoryEventStore(idempotency=True, duplicate_policy="raise")
+    event = NewEvent(channel="orders", type="order.created", payload={}, event_id="evt_123")
+
+    await store.publish(event)
+
+    with pytest.raises(DuplicateEventError):
+        await store.publish(event)
+
+
+def test_memory_invalid_duplicate_policy_raises() -> None:
+    with pytest.raises(ValueError):
+        MemoryEventStore(duplicate_policy="invalid")
+
+
+@pytest.mark.asyncio
+async def test_memory_healthcheck_returns_true() -> None:
+    store = MemoryEventStore()
+
+    assert await store.healthcheck() is True
+
+
+@pytest.mark.asyncio
+async def test_closed_memory_healthcheck_raises() -> None:
+    store = MemoryEventStore()
+    await store.close()
+
+    with pytest.raises(StoreError):
+        await store.healthcheck()

@@ -2,16 +2,32 @@
 
 All notable changes to ReplayRail are documented in this file.
 
-## 0.1.2 - Unreleased
+## 0.2.0 - Unreleased
 
-- Add a reproducible Docker test gate with Redis-backed verification.
-- Add README contract tests for publish/replay and WebSocket recovery with `last_event_id`.
-- Add FastAPI tests for `default_start_position="latest"` and `"earliest"`.
-- Add shared stream cursor validation and consistent `InvalidCursorError` behavior.
-- Add retained-history detection through `ReplayWindowExpiredError` where stores can determine that a cursor is older than retained events.
-- Preserve and test audit context fields including `actor`, `metadata`, correlation IDs, and timestamps across memory and Redis stores.
-- Add PyPI readiness checks with `twine check`.
-- Add GitHub Actions CI and a manual/release PyPI publish workflow.
+### Added
+
+- Added logical `event_id` to `NewEvent` and `ReplayEvent`.
+- Added `ReplayRail.prepare_event()`.
+- Added `ReplayRail.publish_event()`.
+- Added stable event dict serialization helpers.
+- Added optional Redis publish idempotency by `event_id`.
+- Added optional MemoryEventStore idempotency by `event_id`.
+- Added duplicate event errors.
+- Added optional healthcheck support.
+- Added docs for reliable publishing and app-owned outbox patterns.
+
+### Changed
+
+- WebSocket event payloads now include `event_id`.
+- Redis events now persist `event_id`.
+- Redis decoding falls back to stream id for old events without `event_id`.
+
+### Notes
+
+ReplayRail does not implement database transactions, SQLAlchemy integration,
+outbox tables, migrations, or outbox workers. Applications that need reliable
+database-to-ReplayRail publishing should implement an app-owned transactional
+outbox.
 
 ## 0.1.0 - 2026-06-29
 

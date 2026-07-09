@@ -50,6 +50,7 @@ async def test_readme_publish_and_replay_contract() -> None:
     assert missed_events[0].payload == {"order_id": "ord_123"}
     assert missed_events[0].actor == {"type": "kitchen_staff", "id": "usr_456"}
     assert missed_events[0].metadata == {"correlation_id": "req_abc123"}
+    assert missed_events[0].event_id == missed_event.event_id
 
 
 def test_readme_websocket_last_event_id_contract() -> None:
@@ -74,7 +75,7 @@ def test_readme_websocket_last_event_id_contract() -> None:
             actor=body.get("actor"),
             metadata=body.get("metadata"),
         )
-        return {"id": event.id}
+        return {"id": event.id, "event_id": event.event_id}
 
     @app.websocket("/ws/{channel:path}")
     async def websocket_endpoint(websocket: WebSocket, channel: str) -> None:
@@ -96,6 +97,7 @@ def test_readme_websocket_last_event_id_contract() -> None:
 
     assert event == {
         "id": published["id"],
+        "event_id": published["event_id"],
         "channel": "restaurant:123:orders",
         "type": "order.created",
         "payload": {"order_id": "ord_123"},

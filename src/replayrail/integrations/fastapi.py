@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Mapping, Protocol
 
 from replayrail.errors import WebSocketDeliveryError
-from replayrail.events import ReplayEvent, datetime_to_wire, validate_channel
+from replayrail.events import ReplayEvent, replay_event_to_dict, validate_channel
 from replayrail.rail import ReplayRail
 
 
@@ -91,15 +91,7 @@ class ReplayRailWebSocket:
 
 
 def event_to_dict(event: ReplayEvent) -> dict[str, Any]:
-    return {
-        "id": event.id,
-        "channel": event.channel,
-        "type": event.type,
-        "payload": dict(event.payload),
-        "actor": dict(event.actor) if event.actor is not None else None,
-        "metadata": dict(event.metadata),
-        "created_at": datetime_to_wire(event.created_at),
-    }
+    return replay_event_to_dict(event)
 
 
 def _is_disconnect_error(exc: BaseException) -> bool:

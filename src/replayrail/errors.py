@@ -1,5 +1,15 @@
+from __future__ import annotations
+
+from typing import Any
+
+
 class ReplayRailError(Exception):
     """Base error for ReplayRail."""
+
+    def __init__(self, message: str = "", **context: Any) -> None:
+        super().__init__(message)
+        self.message = message
+        self.context = context
 
 
 class InvalidChannelError(ReplayRailError):
@@ -8,6 +18,10 @@ class InvalidChannelError(ReplayRailError):
 
 class InvalidEventTypeError(ReplayRailError):
     """Raised when an event type is empty or contains unsupported characters."""
+
+
+class InvalidEventIdError(ReplayRailError):
+    """Raised when an event_id is invalid."""
 
 
 class InvalidCursorError(ReplayRailError):
@@ -20,6 +34,14 @@ class SerializationError(ReplayRailError):
 
 class StoreError(ReplayRailError):
     """Raised when an event store operation fails."""
+
+
+class DuplicateEventError(ReplayRailError):
+    """Raised when an event_id has already been published."""
+
+
+class DuplicateEventConflictError(DuplicateEventError):
+    """Raised when the same event_id is reused for different event content."""
 
 
 class ReplayWindowExpiredError(ReplayRailError):
